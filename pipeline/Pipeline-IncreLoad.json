@@ -1,0 +1,163 @@
+{
+	"name": "Pipeline-IncreLoad",
+	"properties": {
+		"activities": [
+			{
+				"name": "GETCFG",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "7.00:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlSource",
+						"sqlReaderQuery": {
+							"value": "SELECT * FROM @{pipeline().parameters.ConfigTable}\nIF @@ROWCOUNT = 0 THROW 50000,'No rows in configuration table!',1",
+							"type": "Expression"
+						}
+					},
+					"dataset": {
+						"referenceName": "sqldataset",
+						"type": "DatasetReference"
+					},
+					"firstRowOnly": false
+				}
+			},
+			{
+				"name": "ORC CFG",
+				"type": "Filter",
+				"dependsOn": [
+					{
+						"activity": "GETCFG",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('GETCFG').output.value",
+						"type": "Expression"
+					},
+					"condition": {
+						"value": "@greater(item().received_datetime,formatDateTime(utcnow(), 'yyyyMMdd'))",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "IncrementLaod",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "ORC CFG",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('ORC CFG').output.value",
+						"type": "Expression"
+					},
+					"activities": [
+						{
+							"name": "Processing Records",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "7.00:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlSource",
+									"sqlReaderQuery": {
+										"value": "SELECT * FROM @{pipeline().parameters.ConfigTable} WHERE received_datetime = convert(datetime,'@{item().received_datetime}')",
+										"type": "Expression"
+									}
+								},
+								"dataset": {
+									"referenceName": "sqldataset",
+									"type": "DatasetReference"
+								}
+							}
+						},
+						{
+							"name": "Copying Processed Data",
+							"type": "Copy",
+							"dependsOn": [
+								{
+									"activity": "Processing Records",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "7.00:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlSource",
+									"sqlReaderQuery": {
+										"value": "SELECT * FROM @{pipeline().parameters.ConfigTable} WHERE received_datetime = convert(datetime,'@{item().received_datetime}')",
+										"type": "Expression"
+									}
+								},
+								"sink": {
+									"type": "SqlSink",
+									"writeBatchSize": 10000
+								},
+								"enableStaging": false,
+								"dataIntegrationUnits": 0,
+								"sqldataset": {
+									"type": "SqlSink",
+									"writeBatchSize": 10000
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "sqldataset",
+									"type": "DatasetReference"
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "sqldataset",
+									"type": "DatasetReference"
+								}
+							]
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"ConfigTable": {
+				"type": "String",
+				"defaultValue": "config.Inboundtransactioncontrol"
+			}
+		},
+		"annotations": []
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}
