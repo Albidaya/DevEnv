@@ -21,7 +21,4 @@ WHERE   1=1
                                                 10000000000010);
 
 
-SELECT prod_key,stat_unit_qty,gross_transact_amt FROM ship_fct
-
-
 
